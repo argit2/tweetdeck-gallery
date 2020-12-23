@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Tweetdeck gallery
 // @namespace    https://github.com/argit2/tweetdeck-gallery
-// @version      0.1
-// @description  try to take over the world!
+// @version      1.0
+// @description  Allows navigating through tweets in tweetdeck by keyboard shorcuts. Also makes ctrl c copy the link of the currently loaded tweet.
 // @author       You
 // @match        https://tweetdeck.twitter.com/
 // @grant        GM_setClipboard
@@ -11,7 +11,9 @@
 /*
 Usage
 
-click somewhere in the page, type the number of the column you wanna see, and use letters j and k to navigate between media tweets
+Click somewhere in the page, type the number of the column you wanna see, and use letters j and k to navigate between media tweets
+
+Ctrl c when a tweet is open copies the link
 
 */
 
