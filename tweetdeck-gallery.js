@@ -11,25 +11,13 @@
 /*
 Usage
 
-click somewhere in the page, type the number of the column you wanna see, and use letters j and k to navigate between media
+click somewhere in the page, type the number of the column you wanna see, and use letters j and k to navigate between media tweets
 
-
-PS:
-
-needs my userstyle to work, so the tweets can be technically visible in the page
-
-in some instanes it'll start opening links in new tabs if you try to go back through many tweets
-i fixed that partially but i have no idea how to fix that entirely, ALL the links start opening in new pages
-might have to do with how the event bubbles before being processed
-TODO it actually has to do with the error "cannot read property "showChirp" of null" that pops up on console. showChirp is probably the function that shows the content, and it's probably doing a queryselector to find the link of the tweet it wanna show and failing to find it lmfao
-check how the function works on firefox and it'll become clear what to change to make it work
-there's a chance that clonning the WHOLE js-column structure with everything inside and putting my articles there will enable the code to work correctly
 */
 
 var currentColumn = 1;
-var count = 0;
-var mediaTweets = [];
-var mediaTweetsDict = {};
+var currentTweet = null;
+const preemptiveLoad = 3; // if only this amount of tweets remaining to see, will attempt to load more
 
 function removeAllChildren (elem) {
   while (elem.lastElementChild) {
@@ -60,27 +48,22 @@ function setAutoplay() {
 }
 
 function gatherTweets() {
-    return Array.from(document.querySelectorAll(`.js-column:nth-child(${currentColumn}) .js-column-holder article`));
+    return Array.filter(Array.from(document.querySelectorAll(`.js-column:nth-child(${currentColumn}) .js-column-holder article`)), elemExists);
 }
 
 function gatherMediaTweets() {
     let elements = gatherTweets();
-    console.log(elements);
-    elements.forEach( elem => {
-        let linkElem = elem.querySelector("a.media-item");
+    let mediaTweets = Array.filter(elements, elem => {
+        let linkElem = mediaLinkElem(elem);
         if (linkElem) {
             let link = linkElem.href;
-            if (link.includes("t.co") && ! (link in mediaTweetsDict) && linkElem.style.visibility != "hidden") {
-                // creates a new element and positions it inside .js-column so the click event bubbles up to .js-column and works
-                let clone = elem.cloneNode(true);
-                clone.style.display = "block"; // in case my other script changed that to none before i could clone
-                trickElement.appendChild(clone);
-                let linkElemInside = clone.querySelector("a.media-item");
-                mediaTweetsDict[link] = "";
-                mediaTweets.push(linkElemInside);
+            if (link.includes("t.co")) {
+                return true;
             }
         }
+        return false;
     });
+    return mediaTweets;
 }
 
 function loadNextTweets() {
@@ -96,62 +79,105 @@ function loadNextTweets() {
 function loadPrevTweets() {
     let elements = gatherTweets();
     if (elements) {
+        // goes down then up
+        elements[1].scrollIntoView(false);
         elements[0].scrollIntoView(false);
     }
 }
 
-function showCurrent() {
-    if (count >= mediaTweets.length || count < 1) {
-        return;
-    }
-    //mediaTweets[count - 1].scrollIntoView();
-    mediaTweets[count - 1].click();
-}
-
 function elemExists(elem)
 {
-    if (elem) console.log(elem.style.display);
     return elem && elem.style.visibility != "hidden" && elem.style.display !== "none";
 }
 
-function showNext() {
-    //let nextButton = document.querySelector(".js-media-gallery-next");
-    //if (elemExists(nextButton)) {
-    //    return;
-    //}
-    if (count == mediaTweets.length) {
-        loadNextTweets();
+function getCurrentTweet () {
+    if (! currentTweet) {
+        resetCurrentTweet();
     }
-    gatherMediaTweets();
-    if (count < mediaTweets.length) {
-        count++;
-        showCurrent();
+    return currentTweet;
+}
+
+function resetCurrentTweet () {
+    let mediaTweets = gatherMediaTweets();
+    if (mediaTweets) {
+        currentTweet = mediaTweets[0];
+    }
+    else {
+        print("Error: no mediaTweets on current column");
     }
 }
 
-function showPrevious () {
-    //let prevButton = document.querySelector(".js-media-gallery-prev");
-    //if (elemExists(prevButton)) {
-    //    return;
-    //}
-    //if (count == mediaTweets.length) {
-    //    loadPrevTweets();
-    //}
-    gatherMediaTweets();
-    if (count > 0) {
-        count--;
-        showCurrent();
+function mediaLinkElem (tweet) {
+    let elem = tweet.querySelector("a.media-item");
+    if (!elem) {
+            elem = tweet.querySelector("a.media-image");
+    }
+    return elem;
+}
+
+function showCurrentTweet () {
+    let current = getCurrentTweet();
+    let linkElem = mediaLinkElem(current);
+    if (linkElem) {
+        //linkElem.scrollIntoView(false);
+        linkElem.click();
+    }
+}
+
+function findIndexMediaTweet(arr, tweet) {
+    return arr.findIndex(x => {
+        let elem1 = mediaLinkElem(x);
+        let elem2 = mediaLinkElem(tweet);
+        return elem1 && elem2 && elem1.href == elem2.href;
+    });
+}
+
+function currentTweetLost(mediaTweets, current){
+    console.log("Error: currentTweet lost. This is probably due to it being unloaded as the script scrolls down without being able to find media posts. Resetting value to first visible media post.");
+    console.log("Lost tweet:", current);
+    console.log("Visible media tweets:", mediaTweets);
+    currentTweet = mediaTweets[0];
+    showCurrentTweet();
+}
+
+function showNextTweet () {
+    let current = getCurrentTweet();
+    let mediaTweets = gatherMediaTweets();
+    let index = findIndexMediaTweet(mediaTweets, current);
+    if (index == -1) {
+        currentTweetLost(mediaTweets, current);
+        return;
+    }
+    if (index < mediaTweets.length - 1) {
+       currentTweet = mediaTweets[index + 1]
+       showCurrentTweet();
+    }
+    // atempts to load more even if it's not the last
+    if (index + 1 >= mediaTweets.length - preemptiveLoad) {
+        loadNextTweets();
+    }
+}
+
+function showPreviousTweet () {
+    let current = getCurrentTweet();
+    let mediaTweets = gatherMediaTweets();
+    let index = findIndexMediaTweet(mediaTweets, current);
+    if (index == -1) {
+        currentTweetLost(mediaTweets, current);
+        return;
+    }
+    if (index >= 1) {
+       currentTweet = mediaTweets[index - 1]
+       showCurrentTweet();
+    }
+    if (index - 1 <= preemptiveLoad) {
+        loadPrevTweets();
     }
 }
 
 function setCurrentColumn (colNumber) {
     currentColumn = colNumber;
-    count = 0;
-    mediaTweets = []
-    mediaTweetsDict = {};
-    console.log(mediaTweets, mediaTweetsDict);
-    removeAllChildren(trickElement);
-    gatherMediaTweets();
+    resetCurrentTweet();
 }
 
 
@@ -163,23 +189,15 @@ function doc_keyUp(e) {
     }
     switch (x) {
         case 74:
-            showNext();
+            showNextTweet();
             break;
         case 75:
-            showPrevious();
+            showPreviousTweet();
             break;
         default:
             break;
     }
 }
 
-function initialize() {
-    document.querySelector(".js-column").appendChild(trickElement);
-}
-
-var trickElement = document.createElement("div");
-trickElement.id = "gallery-trick";
-
-doOnceLoaded("div.js-app-content", initialize);
 doOnceLoaded("div#open-modal", setAutoplay);
 document.addEventListener('keyup', doc_keyUp, false);
